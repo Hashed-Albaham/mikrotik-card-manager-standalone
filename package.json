@@ -1,0 +1,66 @@
+{
+  "name": "mikrotik-card-manager-standalone",
+  "version": "1.0.0",
+  "description": "Offline MikroTik card generation, export and manual batch delivery.",
+  "author": "Local Deployment",
+  "private": true,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Hashed-Albaham/mikrotik-card-manager-standalone.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Hashed-Albaham/mikrotik-card-manager-standalone/issues"
+  },
+  "homepage": "https://github.com/Hashed-Albaham/mikrotik-card-manager-standalone#readme",
+  "main": "desktop/main.cjs",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "desktop:run": "electron .",
+    "desktop:package": "pnpm build && electron-builder --dir",
+    "android:sync": "pnpm build && cap sync android",
+    "android:apk": "pnpm android:sync && cd android && ./gradlew assembleDebug",
+    "start": "node server/index.mjs",
+    "db:migrate": "node server/migrate.mjs",
+    "server:test": "vitest run server"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.0",
+    "@capacitor/core": "8.5.0",
+    "bcryptjs": "2.4.3",
+    "cookie-parser": "1.4.7",
+    "cors": "2.8.5",
+    "express": "5.1.0",
+    "jose": "6.1.0",
+    "mysql2": "3.15.0",
+    "pdf-lib": "1.17.1",
+    "react": "19.2.1",
+    "react-dom": "19.2.1",
+    "zod": "4.1.12"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.0",
+    "@types/node": "24.7.0",
+    "@types/react": "19.2.1",
+    "@types/react-dom": "19.2.1",
+    "@vitejs/plugin-react": "5.0.4",
+    "electron": "43.4.0",
+    "electron-builder": "26.15.3",
+    "typescript": "5.9.3",
+    "vite": "7.1.7",
+    "vite-plugin-pwa": "1.2.0",
+    "vitest": "2.1.4"
+  },
+  "build": {
+    "appId": "com.mikrotik.cardmanager",
+    "productName": "MikroTik Card Manager",
+    "files": ["dist/**/*", "desktop/**/*", "package.json"],
+    "linux": { "target": ["dir"], "category": "Utility" },
+    "win": { "target": ["nsis"] }
+  }
+}
