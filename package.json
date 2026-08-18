@@ -27,6 +27,7 @@
     "android:apk": "pnpm android:sync && cd android && ./gradlew assembleDebug",
     "start": "node server/index.mjs",
     "db:migrate": "node server/migrate.mjs",
+    "password:hash": "node server/create-password-hash.mjs",
     "server:test": "vitest run server"
   },
   "dependencies": {

@@ -39,20 +39,31 @@ export async function seedInitialAdmin() {
   const [existing] = await db.execute("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
   if (existing.length) return;
   const username = process.env.INITIAL_ADMIN_USERNAME;
-  const password = process.env.INITIAL_ADMIN_PASSWORD;
-  if (!username || !password) throw new Error("INITIAL_ADMIN_USERNAME and INITIAL_ADMIN_PASSWORD are required for the first server start.");
-  if (password.length < 12) throw new Error("INITIAL_ADMIN_PASSWORD must be at least 12 characters.");
-  await db.execute("INSERT INTO users (id, username, password_hash, role, status) VALUES (?, ?, ?, 'admin', 'active')", [randomUUID(), username.toLowerCase(), await bcrypt.hash(password, 12)]);
+  const passwordHash = await initialPasswordHash("INITIAL_ADMIN_PASSWORD_HASH", "INITIAL_ADMIN_PASSWORD");
+  if (!username || !passwordHash) throw new Error("INITIAL_ADMIN_USERNAME and INITIAL_ADMIN_PASSWORD_HASH are required for the first database migration.");
+  await db.execute("INSERT INTO users (id, username, password_hash, role, status) VALUES (?, ?, ?, 'admin', 'active')", [randomUUID(), username.toLowerCase(), passwordHash]);
 }
 
 export async function seedInitialDemoUser() {
   const username = process.env.INITIAL_DEMO_USERNAME?.toLowerCase();
-  const password = process.env.INITIAL_DEMO_PASSWORD;
-  if (!username && !password) return;
-  if (!username || !password || password.length < 12) throw new Error("INITIAL_DEMO_USERNAME and INITIAL_DEMO_PASSWORD must be provided together, and the password must be at least 12 characters.");
+  const passwordHash = await initialPasswordHash("INITIAL_DEMO_PASSWORD_HASH", "INITIAL_DEMO_PASSWORD");
+  if (!username && !passwordHash) return;
+  if (!username || !passwordHash) throw new Error("INITIAL_DEMO_USERNAME and INITIAL_DEMO_PASSWORD_HASH must be provided together.");
   const db = database();
   const [existing] = await db.execute("SELECT id FROM users WHERE username = ? LIMIT 1", [username]);
-  if (!existing.length) await db.execute("INSERT INTO users (id, username, password_hash, role, status) VALUES (?, ?, ?, 'user', 'active')", [randomUUID(), username, await bcrypt.hash(password, 12)]);
+  if (!existing.length) await db.execute("INSERT INTO users (id, username, password_hash, role, status) VALUES (?, ?, ?, 'user', 'active')", [randomUUID(), username, passwordHash]);
+}
+
+export async function initialPasswordHash(hashKey, passwordKey) {
+  const suppliedHash = process.env[hashKey];
+  if (suppliedHash) {
+    if (!/^\$2[aby]\$\d{2}\$/.test(suppliedHash)) throw new Error(`${hashKey} must be a valid bcrypt hash.`);
+    return suppliedHash;
+  }
+  const password = process.env[passwordKey];
+  if (!password) return null;
+  if (password.length < 12) throw new Error(`${passwordKey} must be at least 12 characters.`);
+  return bcrypt.hash(password, 12);
 }
 
 export function activeUserOrError(user) {

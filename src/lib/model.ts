@@ -11,7 +11,7 @@ export type Plan = { id: string; name: string; accessMode: AccessMode; profileNa
 export type TemplateElement = { key: "username" | "password" | "serial" | "productionDate"; xMm: number; yMm: number; fontSizePt: number; align: "left" | "center" | "right" };
 export type PrintTemplate = { id: string; name: string; backgroundDataUrl?: string; rows: number; columns: number; margins: { top: number; right: number; bottom: number; left: number }; gaps: { x: number; y: number }; elements: TemplateElement[] };
 export type Card = { serial: number; username: string; password: string };
-export type Batch = { id: string; createdAt: string; planId: string; deviceId?: string; routerVersion: RouterVersion; cards: Card[]; script: string; templateId?: string; status: "local" | "sent" | "cancelled" };
+export type Batch = { id: string; createdAt: string; planId: string; deviceId?: string; routerVersion: RouterVersion; cards: Card[]; script: string; templateId?: string; notes?: string; status: "local" | "sent" | "cancelled" };
 export type AppData = { devices: Device[]; plans: Plan[]; templates: PrintTemplate[]; batches: Batch[]; nextSerial: number };
 
 export const defaultGenerator: GeneratorSettings = {

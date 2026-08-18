@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { database } from "./db.mjs";
+import { applyBatchMetadata, batchMetadataSchema } from "./batches.mjs";
 import { decryptText, encryptText } from "./crypto.mjs";
 import { activeUserOrError, createSession, publicUser, sessionFromToken } from "./auth.mjs";
 
@@ -31,6 +32,8 @@ function resourceKind(request, response, next) { if (!resourceKinds.includes(req
 async function audit(actorId, action, subjectType, subjectId, metadata = null) { await database().execute("INSERT INTO audit_logs (id, actor_id, action, subject_type, subject_id, metadata) VALUES (?, ?, ?, ?, ?, ?)", [randomUUID(), actorId, action, subjectType, subjectId, metadata ? JSON.stringify(metadata) : null]); }
 function storedPayload(kind, payload) { if (kind !== "device") return payload; const { password, ...safe } = payload; return typeof password === "string" && password.length ? { ...safe, passwordEncrypted: encryptText(password) } : safe; }
 function presentedPayload(kind, payload) { if (kind !== "device") return payload; const { passwordEncrypted, ...safe } = payload; return passwordEncrypted ? { ...safe, password: decryptText(passwordEncrypted) } : safe; }
+const batchReferenceField = { device: "deviceId", plan: "planId", template: "templateId" };
+async function isReferencedByBatch(userId, kind, resourceId) { const field = batchReferenceField[kind]; if (!field) return false; const [rows] = await database().execute("SELECT id FROM resources WHERE user_id = ? AND kind = 'batch' AND JSON_UNQUOTE(JSON_EXTRACT(payload, ?)) = ? LIMIT 1", [userId, `$.${field}`, resourceId]); return rows.length > 0; }
 
 const credentialsSchema = z.object({ username: z.string().trim().toLowerCase().regex(/^[a-z0-9_.-]{3,64}$/), password: z.string().min(12).max(128) });
 const userUpdateSchema = z.object({ status: z.enum(["pending", "active", "suspended", "expired"]).optional(), role: z.enum(["admin", "user"]).optional(), activationExpiresAt: z.string().datetime().nullable().optional() });
@@ -74,10 +77,19 @@ app.post("/api/resources/:kind", requireActive, resourceKind, async (request, re
   try { const { payload } = resourceSchema.parse(request.body); const id = randomUUID(); const stored = storedPayload(request.params.kind, payload); await database().execute("INSERT INTO resources (id, user_id, kind, payload) VALUES (?, ?, ?, ?)", [id, request.user.id, request.params.kind, JSON.stringify(stored)]); await audit(request.user.id, "resource.created", request.params.kind, id); return response.status(201).json({ id, ...payload }); } catch (error) { next(error); }
 });
 app.put("/api/resources/:kind/:id", requireActive, resourceKind, async (request, response, next) => {
-  try { const { payload } = resourceSchema.parse(request.body); const stored = storedPayload(request.params.kind, payload); const [result] = await database().execute("UPDATE resources SET payload = ? WHERE id = ? AND user_id = ? AND kind = ?", [JSON.stringify(stored), request.params.id, request.user.id, request.params.kind]); if (!result.affectedRows) return response.status(404).json({ error: "السجل غير موجود." }); await audit(request.user.id, "resource.updated", request.params.kind, request.params.id); return response.json({ id: request.params.id, ...payload }); } catch (error) { next(error); }
+  try {
+    const { payload } = resourceSchema.parse(request.body);
+    if (request.params.kind === "batch") {
+      const change = batchMetadataSchema.parse(payload); const [currentRows] = await database().execute("SELECT payload FROM resources WHERE id = ? AND user_id = ? AND kind = 'batch' LIMIT 1", [request.params.id, request.user.id]);
+      if (!currentRows.length) return response.status(404).json({ error: "السجل غير موجود." }); const current = JSON.parse(currentRows[0].payload); let device;
+      if (change.deviceId) { const [deviceRows] = await database().execute("SELECT payload FROM resources WHERE id = ? AND user_id = ? AND kind = 'device' LIMIT 1", [change.deviceId, request.user.id]); if (!deviceRows.length) return response.status(400).json({ error: "الجهاز المحدد غير موجود ضمن حسابك." }); device = JSON.parse(deviceRows[0].payload); }
+      const nextPayload = applyBatchMetadata(current, change, device); await database().execute("UPDATE resources SET payload = ? WHERE id = ? AND user_id = ? AND kind = 'batch'", [JSON.stringify(nextPayload), request.params.id, request.user.id]); await audit(request.user.id, "batch.metadata_updated", "batch", request.params.id); return response.json({ id: request.params.id, ...nextPayload });
+    }
+    const stored = storedPayload(request.params.kind, payload); const [result] = await database().execute("UPDATE resources SET payload = ? WHERE id = ? AND user_id = ? AND kind = ?", [JSON.stringify(stored), request.params.id, request.user.id, request.params.kind]); if (!result.affectedRows) return response.status(404).json({ error: "السجل غير موجود." }); await audit(request.user.id, "resource.updated", request.params.kind, request.params.id); return response.json({ id: request.params.id, ...payload });
+  } catch (error) { next(error); }
 });
 app.delete("/api/resources/:kind/:id", requireActive, resourceKind, async (request, response, next) => {
-  try { const [result] = await database().execute("DELETE FROM resources WHERE id = ? AND user_id = ? AND kind = ?", [request.params.id, request.user.id, request.params.kind]); if (!result.affectedRows) return response.status(404).json({ error: "السجل غير موجود." }); await audit(request.user.id, "resource.deleted", request.params.kind, request.params.id); return response.status(204).end(); } catch (error) { next(error); }
+  try { if (await isReferencedByBatch(request.user.id, request.params.kind, request.params.id)) return response.status(409).json({ error: "لا يمكن الحذف لأن هذا السجل مرتبط بدفعة محفوظة. احذف أو عدّل الدفعات المرتبطة أولاً." }); const [result] = await database().execute("DELETE FROM resources WHERE id = ? AND user_id = ? AND kind = ?", [request.params.id, request.user.id, request.params.kind]); if (!result.affectedRows) return response.status(404).json({ error: "السجل غير موجود." }); await audit(request.user.id, "resource.deleted", request.params.kind, request.params.id); return response.status(204).end(); } catch (error) { next(error); }
 });
 
 app.get("/api/admin/users", requireAdmin, async (request, response, next) => { try { const [rows] = await database().execute("SELECT * FROM users ORDER BY created_at DESC"); return response.json({ users: rows.map(publicUser) }); } catch (error) { next(error); } });

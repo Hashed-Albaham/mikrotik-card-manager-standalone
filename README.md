@@ -47,7 +47,7 @@ docker compose up --build
 
 ينتظر Compose قاعدة MySQL، ثم ينفذ خدمة `migrate` لإنشاء الجداول وأول مستخدم مدير من متغيرات `INITIAL_ADMIN_*`، وبعدها يبدأ خدمة `app`. افتح `http://localhost:3000` للمستخدمين و`http://localhost:3000/admin` للمدير.
 
-لترحيل قاعدة MySQL خارج Docker، عيّن `DATABASE_URL` و`JWT_SECRET` و`INITIAL_ADMIN_USERNAME` و`INITIAL_ADMIN_PASSWORD` في بيئتك ثم نفّذ:
+لترحيل قاعدة MySQL خارج Docker، عيّن `DATABASE_URL` و`JWT_SECRET` و`INITIAL_ADMIN_USERNAME` و`INITIAL_ADMIN_PASSWORD_HASH` في بيئتك ثم نفّذ:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -64,8 +64,8 @@ pnpm start
 | `JWT_SECRET` | نعم | سلسلة عشوائية بطول 32 حرفاً أو أكثر لتوقيع الجلسات. |
 | `RESOURCE_ENCRYPTION_KEY` | نعم عند حفظ جهاز | مفتاح AES-256 بصيغة Base64 (32 بايت بعد الفك) لتشفير كلمات مرور الأجهزة في قاعدة البيانات. |
 | `INITIAL_ADMIN_USERNAME` | عند أول ترحيل | اسم أول مدير فقط. |
-| `INITIAL_ADMIN_PASSWORD` | عند أول ترحيل | كلمة سر أول مدير، 12 محرفاً على الأقل. |
-| `INITIAL_DEMO_USERNAME` و`INITIAL_DEMO_PASSWORD` | اختياريان عند أول ترحيل | ينشئان مستخدم تجربة نشطاً لمرة واحدة؛ يجب تقديمهما معاً وكلمة المرور 12 محرفاً أو أكثر. |
+| `INITIAL_ADMIN_PASSWORD_HASH` | عند أول ترحيل | bcrypt hash لكلمة سر أول مدير، ويجب توليده خارج المصدر. |
+| `INITIAL_DEMO_USERNAME` و`INITIAL_DEMO_PASSWORD_HASH` | اختياريان عند أول ترحيل | ينشئان مستخدم تجربة نشطاً لمرة واحدة، مع bcrypt hash فقط. |
 | `PORT` | اختياري | منفذ Express، الافتراضي 3000. |
 
 > عند النشر على Coolify أو أي منصة Docker، عيّن **جذر المشروع** إلى `standalone` وأدخل القيم في واجهة الأسرار الخاصة بالمنصة. أما Vercel فهو serverless ولا يشغّل Docker Compose أو MySQL؛ استخدم قاعدة MySQL خارجية وحوّل الخادم إلى معالج serverless مستقل إذا كان Vercel شرطاً لديك.
@@ -123,3 +123,9 @@ pnpm db:migrate
 ## الأمن والنسخ الاحتياطي
 
 أنشئ نسخاً احتياطية دورية من وحدة MySQL في مخزن مشفر خارج الخادم. بدّل `JWT_SECRET` عند الاشتباه بالتسريب، ولا ترفع ملفات `.env` أو مفاتيح توقيع Android أو ملفات الشهادات إلى GitHub.
+
+لإنشاء hash محلي من دون وضع كلمة المرور في ملف مصدر، شغّل الأمر الآتي في محطة خاصة بك ثم احفظ الناتج في واجهة أسرار الاستضافة باسم `INITIAL_ADMIN_PASSWORD_HASH`:
+
+```bash
+PLAIN_PASSWORD='ضع-كلمة-مرور-قوية-هنا' pnpm password:hash
+```
